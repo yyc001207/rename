@@ -22,7 +22,7 @@ const MAX_BATCH = 500;
 /* ---------------- 文件类型定义 ---------------- */
 const VIDEO_EXTS = new Set([
   '.mp4', '.mkv', '.avi', '.mov', '.flv', '.wmv', '.ts', '.m2ts', '.mts',
-  '.webm', '.rmvb', '.rm', '.mpg', '.mpeg', '.m4v', '.3gp', '.ogm',
+  '.webm', '.rmvb', '.rm', '.mpg', '.mpeg', '.m4v', '.3gp', '.ogm','.strm'
 ]);
 const SUB_EXTS = new Set([
   '.srt', '.ass', '.ssa', '.sub', '.smi', '.vtt', '.idx', '.sup', '.lrc',
@@ -342,15 +342,28 @@ function isValidTargetName(n) {
   return !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(stem);
 }
 
-async function renameOne(folder, srcName, dstName, mode) {
-  if (srcName === dstName) {
+/* 判断目标路径是否位于扫描根目录内（移动文件的安全边界） */
+function isInside(root, target) {
+  const rel = path.relative(root, target);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+/* 重命名（或同盘移动）单个文件；dstFolder 为目标文件夹（不存在时自动创建） */
+async function renameOne(folder, srcName, dstFolder, dstName, mode) {
+  if (folder === dstFolder && srcName === dstName) {
     return { name: srcName, newName: dstName, status: 'skipped', reason: '已是目标名称' };
   }
+  const moving = folder !== dstFolder;
   const src = path.join(folder, srcName);
-  const dst = path.join(folder, dstName);
-  const existing = await findExisting(folder, dstName);
+  const dst = path.join(dstFolder, dstName);
+  try {
+    await fs.mkdir(dstFolder, { recursive: true });
+  } catch (err) {
+    return { name: srcName, newName: dstName, status: 'failed', reason: `无法创建目标文件夹: ${err.message}` };
+  }
+  const existing = await findExisting(dstFolder, dstName);
   if (existing !== null) {
-    if (existing.toLowerCase() === srcName.toLowerCase()) {
+    if (!moving && existing.toLowerCase() === srcName.toLowerCase()) {
       // 目标即源文件本身（仅大小写不同）：两步重命名
       const tmp = path.join(folder, `.rename-tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${path.extname(srcName)}`);
       await fs.rename(src, tmp);
@@ -362,7 +375,7 @@ async function renameOne(folder, srcName, dstName, mode) {
       }
       return { name: srcName, newName: dstName, status: 'renamed', note: '大小写调整' };
     }
-    const st = await fs.stat(path.join(folder, existing)).catch(() => null);
+    const st = await fs.stat(path.join(dstFolder, existing)).catch(() => null);
     if (st && st.isDirectory()) {
       return { name: srcName, newName: dstName, status: 'failed', reason: `目标名称已被文件夹占用（${existing}）` };
     }
@@ -370,24 +383,24 @@ async function renameOne(folder, srcName, dstName, mode) {
       return { name: srcName, newName: dstName, status: 'skipped', reason: `目标文件已存在（${existing}）` };
     }
     if (mode === 'overwrite') {
-      await fs.rm(path.join(folder, existing), { force: true });
+      await fs.rm(path.join(dstFolder, existing), { force: true });
       await fs.rename(src, dst);
-      return { name: srcName, newName: dstName, status: 'renamed', note: `已覆盖 ${existing}` };
+      return { name: srcName, newName: dstName, status: 'renamed', note: `已覆盖 ${existing}${moving ? `（已移动至 ${path.basename(dstFolder)}）` : ''}` };
     }
     // autonum: S01E01.mp4 -> S01E01 (2).mp4
     const ex = path.extname(dstName);
     const stem = dstName.slice(0, dstName.length - ex.length);
     for (let n = 2; n <= 999; n += 1) {
       const cand = `${stem} (${n})${ex}`;
-      if ((await findExisting(folder, cand)) === null) {
-        await fs.rename(src, path.join(folder, cand));
-        return { name: srcName, newName: cand, status: 'renamed', note: '自动编号避免冲突' };
+      if ((await findExisting(dstFolder, cand)) === null) {
+        await fs.rename(src, path.join(dstFolder, cand));
+        return { name: srcName, newName: cand, status: 'renamed', note: `自动编号避免冲突${moving ? `（已移动至 ${path.basename(dstFolder)}）` : ''}` };
       }
     }
     throw new Error('自动编号重试次数过多，请检查文件夹内容');
   }
   await fs.rename(src, dst);
-  return { name: srcName, newName: dstName, status: 'renamed' };
+  return { name: srcName, newName: dstName, status: 'renamed', note: moving ? `已移动至 ${path.basename(dstFolder)}` : undefined };
 }
 
 /* ---------------- 操作日志 ---------------- */
@@ -488,8 +501,16 @@ async function handleRename(req, res) {
         continue;
       }
     }
+    // 允许移动到其他文件夹（分季存储）；目标文件夹必须在扫描根目录内
+    const targetFolder = (it && typeof it.targetFolder === 'string' && it.targetFolder.trim() !== '')
+      ? path.resolve(String(it.targetFolder))
+      : folder;
+    if (!isInside(rootPath, targetFolder)) {
+      results.push({ name, newName, status: 'failed', reason: '目标文件夹不在扫描目录内，已拒绝' });
+      continue;
+    }
     try {
-      results.push(await renameOne(folder, name, newName, conflictMode));
+      results.push(await renameOne(folder, name, targetFolder, newName, conflictMode));
     } catch (e) {
       results.push({ name, newName, status: 'failed', reason: e.message || String(e) });
     }
@@ -651,4 +672,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 }
 
 /* 供单元测试使用 */
-export { extractEpisode, extractSeason, detectLangTag, buildNewName, isValidTargetName, isHalfEpisode, pairKey, scanRoot, startServer };
+export { extractEpisode, extractSeason, detectLangTag, buildNewName, isValidTargetName, isHalfEpisode, pairKey, isInside, scanRoot, startServer };

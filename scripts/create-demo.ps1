@@ -56,6 +56,15 @@ New-File (Join-Path $s3s1 'E01.mp4')   # 与 EP01.mp4 都识别为第 1 集（�
 New-File (Join-Path $s3s1 'EP01.mp4')
 New-File (Join-Path $s3s1 'EP02.mkv')
 
+# ---- 一级结构：单季待拆分演示（可用「按集数拆分季」输入 2,3 体验）----
+$s4 = Join-Path $base '单季待拆分'
+New-Dir $s4
+New-File (Join-Path $s4 'EP01.mp4')
+New-File (Join-Path $s4 'EP02.mp4')
+New-File (Join-Path $s4 'EP03.mp4')
+New-File (Join-Path $s4 'EP04.mp4')
+New-File (Join-Path $s4 'EP05.mp4')
+
 # 根目录下的非媒体文件（会被忽略并提示）
 New-File (Join-Path $base '说明.txt')
 

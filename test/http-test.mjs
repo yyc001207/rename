@@ -23,6 +23,7 @@ const fixture = {
   '瑞克和莫蒂/S1': ['E01.mp4', 'EP01.mp4', 'EP02.mkv'],
   '冲突测试/S1': ['E05.mp4', 'S01E05.mp4', 's01e09.mp4'],
   '自定义/S1': ['A.mp4', 'B.mp4'],
+  '拆分测试': ['EP01.mp4', 'EP02.mp4', 'EP03.mp4', 'EP04.mp4', 'EP05.mp4'],
 };
 for (const [dir, files] of Object.entries(fixture)) {
   await fs.mkdir(path.join(ROOT, dir), { recursive: true });
@@ -59,9 +60,9 @@ const scan = async (p) => (await post('/api/scan', { path: p })).data;
 // 2. 扫描
 let s = await scan(ROOT);
 check('扫描成功', s && s.ok === true);
-check('识别 5 个剧集文件夹', s.shows.length === 5, JSON.stringify(s.shows.map((x) => x.name)));
+check('识别 6 个剧集文件夹', s.shows.length === 6, JSON.stringify(s.shows.map((x) => x.name)));
 const showNames = s.shows.map((x) => x.name);
-check('包含五个剧集名', ['老友记', '权力的游戏', '瑞克和莫蒂', '冲突测试', '自定义'].every((n) => showNames.includes(n)));
+check('包含六个剧集名', ['老友记', '权力的游戏', '瑞克和莫蒂', '冲突测试', '自定义', '拆分测试'].every((n) => showNames.includes(n)));
 
 // 3. 一级结构：老友记
 const lyj = s.shows.find((x) => x.name === '老友记');
@@ -166,7 +167,33 @@ check('含反斜杠自定义名称 → 失败', r.data.results[0].status === 'fa
 r = await post('/api/rename', { root: ROOT, entries: [{ folder: zB.folder, name: zB.name }], conflictMode: 'skip', keepLang: true });
 check('未提供自定义名称时回退到计算名 S01E02.mp4', r.data.results[0].status === 'renamed' && r.data.results[0].newName === 'S01E02.mp4');
 
-// 14. 错误处理
+// 14. 单季拆分：按集数划分并移动到季文件夹
+s = await scan(ROOT);
+const cf = s.shows.find((x) => x.name === '拆分测试');
+check('拆分测试为一级结构', cf.level === 1);
+const cfFiles = cf.seasons[0].files;
+check('拆分测试 5 个文件且顺序编号 1-5', cfFiles.length === 5 && Math.max(...cfFiles.map((f) => f.renumber)) === 5);
+await fs.mkdir(path.join(ROOT, '拆分测试', 'Season 1'), { recursive: true });
+await fs.writeFile(path.join(ROOT, '拆分测试', 'Season 1', 'S01E01.mp4'), '');
+const splitNames = ['S01E01.mp4', 'S01E02.mp4', 'S02E01.mp4', 'S02E02.mp4', 'S02E03.mp4'];
+const splitEntries = cfFiles.map((f, i) => ({
+  folder: f.folder,
+  name: f.name,
+  newName: splitNames[i],
+  targetFolder: path.join(ROOT, '拆分测试', i < 2 ? 'Season 1' : 'Season 2'),
+}));
+r = await post('/api/rename', { root: ROOT, entries: splitEntries, conflictMode: 'skip', keepLang: true });
+check('拆分移动：4 成功 1 跳过（目标已存在）',
+  r.data.results.filter((x) => x.status === 'renamed').length === 4 && r.data.results.filter((x) => x.status === 'skipped').length === 1,
+  JSON.stringify(r.data.results));
+check('Season 2/S02E01.mp4 已生成', await exists(path.join(ROOT, '拆分测试', 'Season 2', 'S02E01.mp4')));
+check('Season 1/S01E02.mp4 已生成', await exists(path.join(ROOT, '拆分测试', 'Season 1', 'S01E02.mp4')));
+check('原文件已移出根目录', !(await exists(path.join(ROOT, '拆分测试', 'EP05.mp4'))));
+check('被跳过文件仍在原位', await exists(path.join(ROOT, '拆分测试', 'EP01.mp4')));
+r = await post('/api/rename', { root: ROOT, entries: [{ folder: cfFiles[0].folder, name: cfFiles[0].name, newName: 'S01E01.mp4', targetFolder: path.join(ROOT, '..', 'outside') }], conflictMode: 'skip', keepLang: true });
+check('目标文件夹越界被拒绝', r.data.results[0].status === 'failed' && /扫描目录/.test(r.data.results[0].reason));
+
+// 15. 错误处理
 r = await post('/api/scan', { path: path.join(ROOT, '不存在的文件夹xyz') });
 check('无效路径返回 400 且给出原因', r.status === 400 && r.data.ok === false && r.data.error.length > 0);
 r = await post('/api/rename', { root: 'C:\\', entries: [], conflictMode: 'skip' });
@@ -174,7 +201,7 @@ check('未扫描先重命名返回 400', r.status === 400 && /先扫描/.test(r.
 r = await post('/api/scan', { path: '' });
 check('空路径返回 400', r.status === 400);
 
-// 15. 日志与导出
+// 16. 日志与导出
 {
   const res = await fetch(base + '/api/log');
   const d = await res.json();
@@ -184,7 +211,7 @@ check('空路径返回 400', r.status === 400);
   check('导出日志包含重命名记录', exp.status === 200 && /重命名批次完成/.test(text));
 }
 
-// 16. 文件夹选择器：会弹出真实对话框，仅当设置 RUN_PICK_TEST=1 时交互测试
+// 17. 文件夹选择器：会弹出真实对话框，仅当设置 RUN_PICK_TEST=1 时交互测试
 if (process.env.RUN_PICK_TEST === '1') {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);

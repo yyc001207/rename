@@ -1,5 +1,6 @@
 // 集数/季数识别规则单元测试：node test/episode.test.mjs
-import { extractEpisode, extractSeason, detectLangTag, buildNewName, isValidTargetName, isHalfEpisode, pairKey } from '../server.mjs';
+import path from 'node:path';
+import { extractEpisode, extractSeason, detectLangTag, buildNewName, isValidTargetName, isHalfEpisode, pairKey, isInside } from '../server.mjs';
 
 let pass = 0;
 let fail = 0;
@@ -83,6 +84,12 @@ eq('字幕与视频同键', pairKey('S01E01.chs.srt', 'chs'), pairKey('S01E01.mp
 eq('双语字幕与视频同键', pairKey('S01E05.chs&eng.srt', 'chs&eng'), 's01e05');
 eq('大小写不敏感', pairKey('E01.MP4', null), 'e01');
 eq('无语言标记', pairKey('E01.mp4', null), 'e01');
+
+// ---- 路径边界（分季移动安全校验）----
+const ROOT_P = path.join('C:', 'root');
+eq('目录内路径合法', isInside(ROOT_P, path.join(ROOT_P, 'Season 1')), true);
+eq('根目录本身合法', isInside(ROOT_P, ROOT_P), true);
+eq('越界路径非法', isInside(ROOT_P, path.join('C:', 'other')), false);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

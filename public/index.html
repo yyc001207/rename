@@ -79,6 +79,13 @@ label.check { display: flex; gap: 6px; align-items: center; }
 .edit-hint { margin: 0; }
 .renum-label { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text); cursor: pointer; white-space: nowrap; }
 .warn-line.alert { color: #b91c1c; font-weight: 600; }
+.split-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 2px; padding: 8px 10px; background: #eef4ff; border: 1px solid #dbe7ff; border-radius: 8px; font-size: 12.5px; }
+.split-bar .split-input { flex: 0 1 340px; min-width: 160px; padding: 5px 8px; font-size: 12.5px; }
+.split-bar select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; background: #fff; }
+.split-bar .check { white-space: nowrap; }
+.split-msg { color: #b45309; font-size: 12px; }
+.split-msg.error { color: #b91c1c; }
+.split-divider { min-width: 760px; margin: 6px 0 4px; padding: 4px 10px; background: #e0eaff; color: #1d4ed8; font-weight: 600; font-size: 12.5px; border-radius: 6px; }
 .selection-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
 .progress { margin-top: 14px; }
 .bar { height: 10px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
@@ -173,7 +180,7 @@ function el(tag, cls, text) {
 }
 const fmtEp = (n) => String(n ?? 0).padStart(2, '0');
 
-const state = { scan: null, include: new Map(), renumber: new Map(), executing: false, abort: false };
+const state = { scan: null, include: new Map(), renumber: new Map(), split: new Map(), executing: false, abort: false };
 let groups = [];
 
 async function api(url, body) {
@@ -214,6 +221,24 @@ function computeTargetName(f, keepLang, renumberOn) {
     return 'S' + fmtEp(f.season) + 'E' + fmtEp(f.renumber) + (keepLang && f.langTag ? '.' + f.langTag : '') + f.ext;
   }
   return computeName(f, keepLang);
+}
+
+/* 季文件夹命名（分季移动时使用） */
+function seasonFolderName(season, fmt) {
+  if (fmt === 's') return 'S' + fmtEp(season);
+  if (fmt === 'cn') return '第' + season + '季';
+  return 'Season ' + season;
+}
+
+/* 依据服务端“从头编号”（配对键顺序）与各季集数，计算文件的分季归属（季数从 1 起、集数从 1 起） */
+function splitAssign(f, cfg) {
+  if (!cfg || f.renumber === null || f.renumber === undefined) return null;
+  let rem = f.renumber;
+  for (let i = 0; i < cfg.counts.length; i += 1) {
+    if (rem <= cfg.counts[i]) return { season: i + 1, ep: rem };
+    rem -= cfg.counts[i];
+  }
+  return null;
 }
 
 /* ---------------- 扫描 ---------------- */
@@ -337,6 +362,64 @@ function buildSeasonGroup(season, keepLang, autoNum) {
     g.append(el('div', 'warn-line small alert', `⚠️ 检测到 ${halfCount} 个特殊集数(.5)文件（如 5.5）：请手动输入其目标集数编号，已默认取消勾选`));
   }
 
+  // 一级结构（单季存储）提供“按集数拆分季”面板：按原有排序顺序划分并可选移动到季文件夹
+  if (season.folderName === null) {
+    const bar = el('div', 'split-bar');
+    bar.append(el('span', null, '按集数拆分季：'));
+    const splitInput = el('input', 'split-input');
+    splitInput.type = 'text';
+    splitInput.placeholder = '48, 48, 54, 25, 51, 39, 12, 51';
+    splitInput.spellcheck = false;
+    const cfg0 = state.split.get(season.folderPath);
+    if (cfg0) splitInput.value = cfg0.counts.join(', ');
+    const fmtSel = el('select');
+    for (const [v, t] of [['season', 'Season N'], ['s', 'S01'], ['cn', '第N季']]) {
+      const opt = el('option', null, t);
+      opt.value = v;
+      fmtSel.append(opt);
+    }
+    if (cfg0) fmtSel.value = cfg0.fmt;
+    const moveCb = el('input');
+    moveCb.type = 'checkbox';
+    moveCb.checked = cfg0 ? cfg0.move : true;
+    const moveLabel = el('label', 'check');
+    moveLabel.append(moveCb, document.createTextNode('移动到季文件夹'));
+    const applyBtn = el('button', 'ghost small', '应用拆分');
+    applyBtn.type = 'button';
+    const clearBtn = el('button', 'ghost small', '清除拆分');
+    clearBtn.type = 'button';
+    const msg = el('span', 'split-msg');
+    bar.append(splitInput, fmtSel, moveLabel, applyBtn, clearBtn, msg);
+    applyBtn.onclick = () => {
+      const parts = splitInput.value.trim().split(/[,，\s]+/).filter(Boolean);
+      const counts = parts.map((p) => parseInt(p, 10));
+      if (!counts.length || !counts.every((c) => Number.isInteger(c) && c > 0)) {
+        msg.className = 'split-msg error';
+        msg.textContent = '请输入正整数集数，用逗号分隔';
+        return;
+      }
+      const maxSlot = Math.max(...season.files.map((f) => f.renumber ?? 0));
+      const total = counts.reduce((a, b) => a + b, 0);
+      if (total !== maxSlot) {
+        msg.className = 'split-msg error';
+        msg.textContent = `共 ${season.files.length} 个文件、${maxSlot} 个独立集数槽位，拆分集数之和应为 ${maxSlot}`;
+        return;
+      }
+      state.split.set(season.folderPath, { counts, fmt: fmtSel.value, move: moveCb.checked });
+      msg.className = 'split-msg';
+      msg.textContent = `已应用：${counts.length} 季 · 共 ${total} 集`;
+      buildRowsFor(group, keepLang, autoNum);
+    };
+    clearBtn.onclick = () => {
+      state.split.delete(season.folderPath);
+      msg.className = 'split-msg';
+      msg.textContent = '';
+      splitInput.value = '';
+      buildRowsFor(group, keepLang, autoNum);
+    };
+    g.append(bar);
+  }
+
   const filesWrap = el('div', 'season-files');
   const group = { season, g, filesWrap, rows: [], renumCb, allCb };
   groups.push(group);
@@ -356,13 +439,33 @@ function buildSeasonGroup(season, keepLang, autoNum) {
   return g;
 }
 
-/* 生成/重建某季分组的文件行（“是否从头开始”切换时按新模式重新计算目标名） */
+/* 生成/重建某季分组的文件行（“是否从头开始”/“按集数拆分”切换时重新计算目标名与目标文件夹） */
 function buildRowsFor(group, keepLang, autoNum) {
   const renumberOn = !!state.renumber.get(group.season.folderPath);
+  const cfg = state.split.get(group.season.folderPath) || null;
+  group.renumCb.disabled = !!cfg;
+  group.renumCb.title = cfg ? '拆分季已启用，从头编号暂不可用' : '';
   const rows = [];
   group.filesWrap.innerHTML = '';
+  let prevSeason = 0;
   for (const f of group.season.files) {
-    const r = buildFileRow(f, computeTargetName(f, keepLang, renumberOn), autoNum);
+    const sa = cfg ? splitAssign(f, cfg) : null;
+    let newName;
+    let targetFolder = f.folder;
+    if (sa) {
+      newName = 'S' + fmtEp(sa.season) + 'E' + fmtEp(sa.ep) + (keepLang && f.langTag ? '.' + f.langTag : '') + f.ext;
+      if (cfg.move) targetFolder = f.folder + '\\' + seasonFolderName(sa.season, cfg.fmt);
+      if (sa.season !== prevSeason) {
+        group.filesWrap.append(el('div', 'split-divider', '── 第 ' + sa.season + ' 季 · ' + cfg.counts[sa.season - 1] + ' 集 ──'));
+        prevSeason = sa.season;
+      }
+    } else {
+      newName = computeTargetName(f, keepLang, renumberOn);
+    }
+    const splitLabel = sa
+      ? '分季 → S' + fmtEp(sa.season) + 'E' + fmtEp(sa.ep) + (cfg.move ? ' · 移入 ' + seasonFolderName(sa.season, cfg.fmt) : '')
+      : null;
+    const r = buildFileRow(f, newName, autoNum, targetFolder, splitLabel);
     rows.push(r);
     group.filesWrap.append(r.row);
   }
@@ -390,10 +493,11 @@ function refreshGroupChecks(rows) {
   const targetCount = new Map();
   const originals = new Map();
   for (const r of rows) {
-    originals.set(r.f.name.toLowerCase(), r);
+    originals.set((r.f.folder + '\u0000' + r.f.name).toLowerCase(), r);
     const t = r.input.value.trim().toLowerCase();
-    if (isValidTarget(t) && t !== r.f.name.toLowerCase()) {
-      targetCount.set(t, (targetCount.get(t) || 0) + 1);
+    if (isValidTarget(t)) {
+      const k = (r.targetFolder + '\u0000' + t).toLowerCase();
+      targetCount.set(k, (targetCount.get(k) || 0) + 1);
     }
   }
   for (const r of rows) {
@@ -407,13 +511,15 @@ function refreshGroupChecks(rows) {
       dyn.append(el('span', 'badge b-red', val === '' ? '目标名称为空' : '非法字符/保留名'));
       continue;
     }
-    if (lower === r.f.name.toLowerCase()) {
+    const tKey = (r.targetFolder + '\u0000' + lower).toLowerCase();
+    if (r.targetFolder === r.f.folder && lower === r.f.name.toLowerCase()) {
       dyn.append(el('span', 'badge b-gray', val === r.f.name ? '已是目标名称' : '仅大小写调整'));
     } else {
-      if ((targetCount.get(lower) || 0) > 1) dyn.append(el('span', 'badge b-orange', '目标名称重复'));
-      const other = originals.get(lower);
+      if ((targetCount.get(tKey) || 0) > 1) dyn.append(el('span', 'badge b-orange', '目标名称重复'));
+      const other = originals.get(tKey);
       if (other && other !== r) {
-        const otherStays = other.input.value.trim().toLowerCase() === other.f.name.toLowerCase();
+        const otherStays = other.targetFolder === other.f.folder
+          && other.input.value.trim().toLowerCase() === other.f.name.toLowerCase();
         dyn.append(el('span', 'badge b-orange', otherStays ? '目标名称已存在' : '与另一文件当前名称冲突'));
       }
       if (val !== computed) dyn.append(el('span', 'badge b-blue', '已修改'));
@@ -421,7 +527,7 @@ function refreshGroupChecks(rows) {
   }
 }
 
-function buildFileRow(f, newName, autoNum) {
+function buildFileRow(f, newName, autoNum, targetFolder, splitLabel) {
   const key = f.folder + '\u0000' + f.name;
   const row = el('div', 'file-row');
   const cb = el('input');
@@ -459,10 +565,11 @@ function buildFileRow(f, newName, autoNum) {
     if (autoNum && f.autoNumber !== null) st.append(el('span', 'badge b-blue', '自动编号 EP' + fmtEp(f.autoNumber)));
   }
   if (f.half) st.append(el('span', 'badge b-red', '特殊集数 .5：需手动输入目标编号'));
+  if (splitLabel) st.append(el('span', 'badge b-purple', splitLabel));
   const dyn = el('span', 'dyn-badges');
   st.append(dyn);
   row.append(c1, orig, arrow, nn, st);
-  return { row, cb, key, input, f, dyn };
+  return { row, cb, key, input, f, dyn, targetFolder };
 }
 
 function updateSelectionInfo() {
@@ -496,7 +603,7 @@ async function doRename() {
         localFailures.push({ name: r.f.name, newName: val || '(空)', status: 'failed', reason: '目标名称无效（为空、含非法字符或为系统保留名）' });
         continue;
       }
-      entries.push({ folder: r.f.folder, name: r.f.name, newName: val });
+      entries.push({ folder: r.f.folder, name: r.f.name, newName: val, targetFolder: r.targetFolder });
     }
   }
   if (!entries.length) {
@@ -618,6 +725,7 @@ function resetAll() {
   state.scan = null;
   state.include = new Map();
   state.renumber = new Map();
+  state.split = new Map();
   groups = [];
   $('step2').classList.add('hidden');
   $('step3').classList.add('hidden');
