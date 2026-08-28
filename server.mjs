@@ -98,6 +98,21 @@ function detectLangTag(fileNameNoExt) {
   return last;
 }
 
+/* 检测 .5 格式的特殊集数（如 5.5 / E05.5 / S01E05.5 / 第12.5集），提示用户手动输入目标编号 */
+function isHalfEpisode(fileNameNoExt) {
+  return /(?:^|[^\d.])\d{1,3}\.5\b/.test(String(fileNameNoExt || ''));
+}
+
+/* 计算文件的“配对键”：去除扩展名与语言标记后的文件名（小写），用于从头编号时视频与字幕配对 */
+function pairKey(name, langTag) {
+  let s = baseNoExt(name).toLowerCase();
+  if (langTag) {
+    const suffix = '.' + String(langTag).toLowerCase();
+    if (s.endsWith(suffix)) s = s.slice(0, -suffix.length);
+  }
+  return s;
+}
+
 function buildNewName(season, episode, extStr, langTag) {
   const lang = langTag ? '.' + langTag : '';
   return `S${pad2(season ?? 1)}E${pad2(episode ?? 1)}${lang}${extStr}`;
@@ -150,6 +165,8 @@ function buildFileItems(dirents, seasonNum, folderPath) {
       episode: extractEpisode(noExt),
       autoNumber: null,
       langTag: isSub ? detectLangTag(noExt) : null,
+      half: isHalfEpisode(noExt),
+      renumber: null,
       newName: null,
       status: 'ok',
       conflictWith: null,
@@ -161,6 +178,16 @@ function buildFileItems(dirents, seasonNum, folderPath) {
   for (const it of items) if (it.episode !== null && it.episode > max) max = it.episode;
   let next = max + 1;
   for (const it of items) if (it.episode === null) { it.autoNumber = next; next += 1; }
+
+  // “是否从头开始”模式使用的顺序编号：按原有排序（文件名自然排序）从头编号，
+  // 视频与其同名字幕（配对键相同）共用同一编号，避免字幕错号
+  const renumMap = new Map();
+  let nextRenum = 1;
+  for (const it of items) {
+    const key = pairKey(it.name, it.langTag);
+    if (!renumMap.has(key)) { renumMap.set(key, nextRenum); nextRenum += 1; }
+    it.renumber = renumMap.get(key);
+  }
 
   // 计算目标名（默认保留语言标记；执行时按界面选项重算）
   for (const it of items) {
@@ -263,7 +290,7 @@ async function scanRoot(rootPath) {
   }
   shows.sort((a, b) => naturalCompare(a.name, b.name));
 
-  const stats = { shows: shows.length, seasons: 0, files: 0, unrecognized: 0, conflicts: 0, noop: 0 };
+  const stats = { shows: shows.length, seasons: 0, files: 0, unrecognized: 0, conflicts: 0, noop: 0, halfEpisodes: 0 };
   for (const show of shows) {
     for (const season of show.seasons) {
       stats.seasons += 1;
@@ -272,6 +299,7 @@ async function scanRoot(rootPath) {
         if (f.episode === null) stats.unrecognized += 1;
         if (['duplicate', 'chain', 'exists'].includes(f.status)) stats.conflicts += 1;
         if (f.status === 'noop') stats.noop += 1;
+        if (f.half) stats.halfEpisodes += 1;
       }
     }
   }
@@ -623,4 +651,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 }
 
 /* 供单元测试使用 */
-export { extractEpisode, extractSeason, detectLangTag, buildNewName, isValidTargetName, scanRoot, startServer };
+export { extractEpisode, extractSeason, detectLangTag, buildNewName, isValidTargetName, isHalfEpisode, pairKey, scanRoot, startServer };

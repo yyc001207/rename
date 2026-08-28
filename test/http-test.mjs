@@ -15,7 +15,7 @@ async function exists(p) { try { await fs.access(p); return true; } catch { retu
 // ---- 自建测试夹具 ----
 await fs.rm(ROOT, { recursive: true, force: true });
 const fixture = {
-  '老友记': ['EP01.mp4', 'EP02.mp4', 'EP03.mp4', '第04集.mkv', '[05].mkv', '06.mp4', 'Friends.S01E07.chs.srt', 'Friends.S01E07.cht.srt', '片头花絮.mp4'],
+  '老友记': ['EP01.mp4', 'EP02.mp4', 'EP03.mp4', '第04集.mkv', '[05].mkv', '06.mp4', 'Friends.S01E07.chs.srt', 'Friends.S01E07.cht.srt', 'E05.5.mkv', '片头花絮.mp4'],
   '权力的游戏/Season 1': ['S01E01.mp4', 'E02.mp4', 'EP03.ass', '04.srt', 'S01E05.chs&eng.srt', 'S01E05.mp4'],
   '权力的游戏/Season 2': ['01.mp4', '第02集.mkv', 'E03.mp4', '04.ass', '第05话.mp4'],
   '权力的游戏/Season 3': ['S03E01.mp4', 'ep2.mkv'],
@@ -68,11 +68,18 @@ const lyj = s.shows.find((x) => x.name === '老友记');
 check('老友记为一级结构', lyj.level === 1);
 check('老友记按第一季处理', lyj.seasons[0].season === 1);
 const lyjFiles = lyj.seasons[0].files;
-check('老友记 9 个媒体文件', lyjFiles.length === 9);
+check('老友记 10 个媒体文件', lyjFiles.length === 10);
 check('EP01.mp4 → S01E01.mp4', lyjFiles.find((f) => f.name === 'EP01.mp4').newName === 'S01E01.mp4');
 check('字幕保留语言标记 chs', lyjFiles.find((f) => f.name === 'Friends.S01E07.chs.srt').newName === 'S01E07.chs.srt');
 const huaxu = lyjFiles.find((f) => f.name === '片头花絮.mp4');
 check('无集数文件自动编号为 8', huaxu.episode === null && huaxu.autoNumber === 8);
+const half = lyjFiles.find((f) => f.name === 'E05.5.mkv');
+check('检测 .5 特殊集数（episode=5, half=true）', half && half.half === true && half.episode === 5);
+check('统计特殊集数', s.stats.halfEpisodes === 1);
+const chs2 = lyjFiles.find((f) => f.name === 'Friends.S01E07.chs.srt');
+const cht2 = lyjFiles.find((f) => f.name === 'Friends.S01E07.cht.srt');
+check('从头编号：视频/字幕配对同号', chs2.renumber === cht2.renumber);
+check('从头编号：10 个文件 9 个编号连续', Math.max(...lyjFiles.map((f) => f.renumber)) === 9 && Math.min(...lyjFiles.map((f) => f.renumber)) === 1);
 
 // 4. 二级结构：权力的游戏
 const got = s.shows.find((x) => x.name === '权力的游戏');
@@ -89,8 +96,8 @@ const rick = s.shows.find((x) => x.name === '瑞克和莫蒂');
 const rs1 = rick.seasons.find((x) => x.folderName === 'S1');
 check('检测到重复目标名称', rs1.files.filter((f) => f.status === 'duplicate').length === 1);
 
-// 6. 重命名批次1：老友记（skip）
-const sel1 = lyjFiles.filter((f) => f.episode !== null);
+// 6. 重命名批次1：老友记（skip；.5 特殊集数按界面行为默认排除）
+const sel1 = lyjFiles.filter((f) => f.episode !== null && !f.half);
 check('老友记应重命名 8 个', sel1.length === 8);
 let r = await post('/api/rename', { root: ROOT, entries: sel1.map((f) => ({ folder: f.folder, name: f.name })), conflictMode: 'skip', keepLang: true });
 check('批次1 成功 8 个', r.data.results.filter((x) => x.status === 'renamed').length === 8, JSON.stringify(r.data.results));

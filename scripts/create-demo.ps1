@@ -16,6 +16,7 @@ New-File (Join-Path $s1 'EP03.mp4')
 New-File (Join-Path $s1 '第04集.mkv')
 New-File (Join-Path $s1 '[05].mkv')
 New-File (Join-Path $s1 '06.mp4')
+New-File (Join-Path $s1 'E05.5.mkv')   # 特殊集数(.5)：扫描时会醒目提示，需手动输入目标编号
 New-File (Join-Path $s1 'Friends.S01E07.chs.srt')
 New-File (Join-Path $s1 'Friends.S01E07.cht.srt')
 New-File (Join-Path $s1 '片头花絮.mp4')   # 无集数信息，可开启“自动编号”

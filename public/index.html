@@ -77,6 +77,8 @@ label.check { display: flex; gap: 6px; align-items: center; }
 .target-input.edited { color: #1d4ed8; }
 .dyn-badges { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .edit-hint { margin: 0; }
+.renum-label { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text); cursor: pointer; white-space: nowrap; }
+.warn-line.alert { color: #b91c1c; font-weight: 600; }
 .selection-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
 .progress { margin-top: 14px; }
 .bar { height: 10px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
@@ -171,8 +173,8 @@ function el(tag, cls, text) {
 }
 const fmtEp = (n) => String(n ?? 0).padStart(2, '0');
 
-const state = { scan: null, include: new Map(), executing: false, abort: false };
-let rowRefs = [];
+const state = { scan: null, include: new Map(), renumber: new Map(), executing: false, abort: false };
+let groups = [];
 
 async function api(url, body) {
   let res;
@@ -204,6 +206,14 @@ function clearMsg(id) { $(id).classList.add('hidden'); }
 function computeName(f, keepLang) {
   const ep = f.episode !== null ? f.episode : f.autoNumber;
   return 'S' + fmtEp(f.season) + 'E' + fmtEp(ep) + (keepLang && f.langTag ? '.' + f.langTag : '') + f.ext;
+}
+
+/* 目标名称计算：勾选“是否从头开始”时使用顺序编号（季数不变），否则按提取/自动编号 */
+function computeTargetName(f, keepLang, renumberOn) {
+  if (renumberOn && f.renumber !== null && f.renumber !== undefined) {
+    return 'S' + fmtEp(f.season) + 'E' + fmtEp(f.renumber) + (keepLang && f.langTag ? '.' + f.langTag : '') + f.ext;
+  }
+  return computeName(f, keepLang);
 }
 
 /* ---------------- 扫描 ---------------- */
@@ -261,15 +271,17 @@ function renderSummary() {
   const p1 = el('p', 'hint');
   p1.append('扫描路径：', el('b', null, s.root));
   const p2 = el('p', 'hint');
-  p2.textContent = '共 ' + st.shows + ' 个剧集文件夹 · ' + st.seasons + ' 个季文件夹 · ' + st.files + ' 个媒体文件 · '
+  let summaryText = '共 ' + st.shows + ' 个剧集文件夹 · ' + st.seasons + ' 个季文件夹 · ' + st.files + ' 个媒体文件 · '
     + st.unrecognized + ' 个无法识别集数 · ' + st.conflicts + ' 个名称冲突';
+  if (st.halfEpisodes > 0) summaryText += ' · ' + st.halfEpisodes + ' 个特殊集数(.5)';
+  p2.textContent = summaryText;
   sum.append(p1, p2);
 }
 
 function renderPreview() {
   const wrap = $('preview');
   wrap.innerHTML = '';
-  rowRefs = [];
+  groups = [];
   const s = state.scan;
   if (!s) return;
   const keepLang = $('keepLang').checked;
@@ -304,6 +316,13 @@ function buildSeasonGroup(season, keepLang, autoNum) {
     : 'S' + fmtEp(season.season) + ' · 剧集文件夹内（第一季）';
   head.append(el('span', 'season-title', label));
   head.append(el('span', 'count', season.files.length + ' 个文件'));
+  // “是否从头开始”：勾选后按原有排序从头编号（季数逻辑不变）
+  const renumLabel = el('label', 'renum-label');
+  const renumCb = el('input');
+  renumCb.type = 'checkbox';
+  renumCb.checked = !!state.renumber.get(season.folderPath);
+  renumLabel.append(renumCb, document.createTextNode('是否从头开始'));
+  head.append(renumLabel);
   const allCb = el('input');
   allCb.type = 'checkbox';
   allCb.dataset.all = '1';
@@ -313,23 +332,21 @@ function buildSeasonGroup(season, keepLang, autoNum) {
   head.append(allLabel);
   g.append(head);
   for (const w of (season.warnings || [])) g.append(el('div', 'warn-line small', '⚠️ ' + w));
+  const halfCount = season.files.filter((f) => f.half).length;
+  if (halfCount) {
+    g.append(el('div', 'warn-line small alert', `⚠️ 检测到 ${halfCount} 个特殊集数(.5)文件（如 5.5）：请手动输入其目标集数编号，已默认取消勾选`));
+  }
 
   const filesWrap = el('div', 'season-files');
-  const rows = [];
-  for (const f of season.files) {
-    const r = buildFileRow(f, computeName(f, keepLang), autoNum);
-    rows.push(r);
-    rowRefs.push(r);
-    filesWrap.append(r.row);
-  }
-  allCb.checked = rows.every((r) => r.cb.checked);
-  for (const r of rows) {
-    r.input.addEventListener('input', () => refreshGroupChecks(rows));
-    r.cb.addEventListener('change', () => { allCb.checked = rows.every((x) => x.cb.checked); });
-  }
-  refreshGroupChecks(rows);
+  const group = { season, g, filesWrap, rows: [], renumCb, allCb };
+  groups.push(group);
+  buildRowsFor(group, keepLang, autoNum);
+  renumCb.onchange = () => {
+    state.renumber.set(season.folderPath, renumCb.checked);
+    buildRowsFor(group, keepLang, autoNum);
+  };
   allCb.onchange = () => {
-    for (const r of rows) {
+    for (const r of group.rows) {
       r.cb.checked = allCb.checked;
       state.include.set(r.key, allCb.checked);
     }
@@ -337,6 +354,26 @@ function buildSeasonGroup(season, keepLang, autoNum) {
   };
   g.append(filesWrap);
   return g;
+}
+
+/* 生成/重建某季分组的文件行（“是否从头开始”切换时按新模式重新计算目标名） */
+function buildRowsFor(group, keepLang, autoNum) {
+  const renumberOn = !!state.renumber.get(group.season.folderPath);
+  const rows = [];
+  group.filesWrap.innerHTML = '';
+  for (const f of group.season.files) {
+    const r = buildFileRow(f, computeTargetName(f, keepLang, renumberOn), autoNum);
+    rows.push(r);
+    group.filesWrap.append(r.row);
+  }
+  group.rows = rows;
+  group.allCb.checked = rows.every((r) => r.cb.checked);
+  for (const r of rows) {
+    r.input.addEventListener('input', () => refreshGroupChecks(rows));
+    r.cb.addEventListener('change', () => { group.allCb.checked = rows.every((x) => x.cb.checked); });
+  }
+  refreshGroupChecks(rows);
+  updateSelectionInfo();
 }
 
 function isValidTarget(val) {
@@ -392,6 +429,7 @@ function buildFileRow(f, newName, autoNum) {
   let checked = f.episode !== null;
   if (f.status === 'noop') checked = false;
   if (f.episode === null && !autoNum) checked = false;
+  if (f.half) checked = false; // .5 特殊集数：需手动输入目标编号后再勾选
   cb.checked = checked;
   state.include.set(key, checked);
   cb.onchange = () => {
@@ -420,6 +458,7 @@ function buildFileRow(f, newName, autoNum) {
     st.append(el('span', 'badge b-red', '无法识别集数'));
     if (autoNum && f.autoNumber !== null) st.append(el('span', 'badge b-blue', '自动编号 EP' + fmtEp(f.autoNumber)));
   }
+  if (f.half) st.append(el('span', 'badge b-red', '特殊集数 .5：需手动输入目标编号'));
   const dyn = el('span', 'dyn-badges');
   st.append(dyn);
   row.append(c1, orig, arrow, nn, st);
@@ -434,9 +473,11 @@ function updateSelectionInfo() {
 }
 
 function setAll(checked) {
-  for (const r of rowRefs) {
-    r.cb.checked = checked;
-    state.include.set(r.key, checked);
+  for (const gr of groups) {
+    for (const r of gr.rows) {
+      r.cb.checked = checked;
+      state.include.set(r.key, checked);
+    }
   }
   document.querySelectorAll('.season-group input[data-all="1"]').forEach((c) => { c.checked = checked; });
   updateSelectionInfo();
@@ -447,14 +488,16 @@ async function doRename() {
   if (state.executing || !state.scan) return;
   const entries = [];
   const localFailures = [];
-  for (const r of rowRefs) {
-    if (!state.include.get(r.key)) continue;
-    const val = r.input.value.trim();
-    if (!isValidTarget(val)) {
-      localFailures.push({ name: r.f.name, newName: val || '(空)', status: 'failed', reason: '目标名称无效（为空、含非法字符或为系统保留名）' });
-      continue;
+  for (const gr of groups) {
+    for (const r of gr.rows) {
+      if (!state.include.get(r.key)) continue;
+      const val = r.input.value.trim();
+      if (!isValidTarget(val)) {
+        localFailures.push({ name: r.f.name, newName: val || '(空)', status: 'failed', reason: '目标名称无效（为空、含非法字符或为系统保留名）' });
+        continue;
+      }
+      entries.push({ folder: r.f.folder, name: r.f.name, newName: val });
     }
-    entries.push({ folder: r.f.folder, name: r.f.name, newName: val });
   }
   if (!entries.length) {
     if (localFailures.length) renderResults(localFailures, false, null);
@@ -574,7 +617,8 @@ async function rescan() {
 function resetAll() {
   state.scan = null;
   state.include = new Map();
-  rowRefs = [];
+  state.renumber = new Map();
+  groups = [];
   $('step2').classList.add('hidden');
   $('step3').classList.add('hidden');
   $('preview').innerHTML = '';

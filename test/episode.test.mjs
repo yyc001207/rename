@@ -1,5 +1,5 @@
 // 集数/季数识别规则单元测试：node test/episode.test.mjs
-import { extractEpisode, extractSeason, detectLangTag, buildNewName, isValidTargetName } from '../server.mjs';
+import { extractEpisode, extractSeason, detectLangTag, buildNewName, isValidTargetName, isHalfEpisode, pairKey } from '../server.mjs';
 
 let pass = 0;
 let fail = 0;
@@ -68,6 +68,21 @@ eq('普通 com10 合法', isValidTargetName('com10.txt'), true);
 eq('尾部点非法', isValidTargetName('S01E01.mp4.'), false);
 eq('点与点点非法', isValidTargetName('..'), false);
 eq('超长名非法', isValidTargetName('x'.repeat(300)), false);
+
+// ---- .5 特殊集数检测 ----
+eq('5.5 是特殊集数', isHalfEpisode('5.5'), true);
+eq('E05.5 是特殊集数', isHalfEpisode('E05.5'), true);
+eq('S01E05.5 是特殊集数', isHalfEpisode('S01E05.5'), true);
+eq('第12.5集 是特殊集数', isHalfEpisode('第12.5集'), true);
+eq('E05 不是特殊集数', isHalfEpisode('E05'), false);
+eq('5.1 音频不是特殊集数', isHalfEpisode('DDP5.1'), false);
+eq('1080p 不是特殊集数', isHalfEpisode('Movie.1080p'), false);
+
+// ---- 配对键（从头编号时视频与字幕配对）----
+eq('字幕与视频同键', pairKey('S01E01.chs.srt', 'chs'), pairKey('S01E01.mp4', null));
+eq('双语字幕与视频同键', pairKey('S01E05.chs&eng.srt', 'chs&eng'), 's01e05');
+eq('大小写不敏感', pairKey('E01.MP4', null), 'e01');
+eq('无语言标记', pairKey('E01.mp4', null), 'e01');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
