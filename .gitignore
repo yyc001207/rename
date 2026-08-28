@@ -1,0 +1,25 @@
+# 依赖
+node_modules/
+
+# 运行时操作日志（logs/rename.log 等）
+logs/
+
+# 演示文件夹（由 scripts/create-demo.ps1 重新生成）
+demo/
+
+# 端到端测试临时夹具（测试脚本自动创建/清理）
+test-tmp/
+
+# 系统文件
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+
+# 日志与临时文件
+*.log
+npm-debug.log*
+*.tmp

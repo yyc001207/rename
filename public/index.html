@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>剧集文件批量重命名工具</title>
+<style>
+:root {
+  --bg: #f3f5f9; --card: #ffffff; --border: #e3e8f0;
+  --text: #1f2937; --muted: #6b7280;
+  --primary: #2563eb; --primary-hover: #1d4ed8;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif; }
+header { text-align: center; padding: 28px 16px 8px; }
+header h1 { margin: 0 0 6px; font-size: 26px; }
+header .sub { margin: 0; color: var(--muted); }
+main { max-width: 1120px; margin: 0 auto; padding: 16px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px 22px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.card h2 { margin: 0 0 14px; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+.card h2 .ghost { margin-left: auto; }
+.step-num { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 13px; align-items: center; justify-content: center; flex: none; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+input[type=text] { flex: 1; min-width: 260px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
+input[type=text]:focus { outline: 2px solid #bfdbfe; border-color: var(--primary); }
+button { border: 1px solid var(--border); background: #fff; color: var(--text); padding: 9px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; }
+button:hover:not(:disabled) { background: #f8fafc; }
+button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+button.primary:hover:not(:disabled) { background: var(--primary-hover); }
+button.big { padding: 10px 26px; font-size: 15px; }
+button.small { padding: 4px 10px; font-size: 12px; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.hint { color: var(--muted); font-size: 12.5px; margin: 10px 0 0; }
+.hint b { word-break: break-all; }
+.msg { margin-top: 12px; padding: 10px 14px; border-radius: 8px; font-size: 13px; }
+.msg.error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.msg.success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.hidden { display: none !important; }
+code { background: #eef2f7; padding: 1px 6px; border-radius: 4px; font-size: 12.5px; }
+.options { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; padding: 12px 14px; background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; }
+fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px 10px; margin: 0; }
+legend { font-size: 12.5px; color: var(--muted); padding: 0 6px; }
+fieldset label { margin-right: 16px; }
+label.check { display: flex; gap: 6px; align-items: center; }
+.danger-opt { color: #b91c1c; }
+.preview { display: flex; flex-direction: column; gap: 14px; }
+.warn-line { color: #b45309; font-size: 12.5px; }
+.warn-line.small { font-size: 12px; }
+.show-group { border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 8px; padding: 10px 14px; }
+.show-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 2px; }
+.show-name { font-weight: 600; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; white-space: nowrap; }
+.b-blue { background: #e0eaff; color: #1d4ed8; }
+.b-red { background: #fee2e2; color: #b91c1c; }
+.b-orange { background: #ffedd5; color: #c2410c; }
+.b-gray { background: #e5e7eb; color: #4b5563; }
+.b-purple { background: #ede9fe; color: #6d28d9; }
+.season-group { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
+.season-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.season-title { font-weight: 600; }
+.count { color: var(--muted); font-size: 12px; }
+.sel-all { margin-left: auto; display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.season-files { overflow-x: auto; }
+.file-row { display: grid; grid-template-columns: 30px minmax(200px, 1fr) 26px minmax(200px, 1.2fr) minmax(180px, auto); gap: 10px; align-items: center; padding: 5px 6px; border-top: 1px dashed var(--border); min-width: 760px; }
+.file-row:first-child { border-top: none; }
+.file-row:hover { background: #fff; }
+.cell-check { display: flex; align-items: center; }
+.cell-name { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.fname { word-break: break-all; }
+.cell-name.new .fname { color: #15803d; font-weight: 600; }
+.cell-arrow { color: var(--muted); text-align: center; }
+.cell-status { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.kind-icon { font-size: 13px; flex: none; }
+.target-input { width: 100%; min-width: 120px; border: 1px solid transparent; background: transparent; color: #15803d; font-weight: 600; font-size: 13px; padding: 3px 6px; border-radius: 6px; font-family: inherit; }
+.target-input:hover { border-color: var(--border); background: #fff; }
+.target-input:focus { outline: 2px solid #bfdbfe; border-color: var(--primary); background: #fff; color: var(--text); }
+.target-input.edited { color: #1d4ed8; }
+.dyn-badges { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.edit-hint { margin: 0; }
+.selection-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
+.progress { margin-top: 14px; }
+.bar { height: 10px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
+#progressBar { height: 100%; width: 0; background: linear-gradient(90deg, #3b82f6, #2563eb); transition: width .25s ease; }
+#progressText { margin-top: 6px; color: var(--muted); font-size: 12.5px; word-break: break-all; }
+.result-box { margin-top: 14px; padding: 14px; border-radius: 10px; }
+.result-box.ok { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.result-box.warn { background: #fffbeb; border: 1px solid #fde68a; }
+.result-title { font-weight: 600; margin-bottom: 6px; }
+.result-line { display: flex; gap: 14px; flex-wrap: wrap; }
+.r-ok { color: #15803d; } .r-skip { color: #b45309; } .r-fail { color: #b91c1c; }
+.fail-list { margin: 8px 0 0; padding-left: 20px; color: #7c2d12; font-size: 12.5px; max-height: 200px; overflow: auto; }
+details summary { cursor: pointer; font-size: 13px; color: var(--muted); margin-top: 8px; }
+.log { margin-top: 10px; max-height: 260px; overflow: auto; font-family: Consolas, "Courier New", monospace; font-size: 12px; background: #0f172a; color: #cbd5e1; border-radius: 8px; padding: 10px 12px; }
+.log-row { display: flex; gap: 8px; padding: 1px 0; flex-wrap: wrap; }
+.log-ts { color: #64748b; flex: none; }
+.log-level { flex: none; width: 40px; }
+.log-level.info { color: #38bdf8; } .log-level.warn { color: #fbbf24; } .log-level.error { color: #f87171; }
+.log-msg { word-break: break-all; }
+.log-detail { color: #64748b; word-break: break-all; }
+footer { text-align: center; color: var(--muted); font-size: 12px; padding: 8px 16px 30px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 剧集文件批量重命名工具</h1>
+  <p class="sub">将视频与字幕文件统一重命名为 <code>S01E01</code> / <code>S02E05</code> 格式 · 本地运行 · 数据不出本机</p>
+</header>
+<main>
+  <section class="card" id="step1Card">
+    <h2><span class="step-num">1</span>选择文件夹</h2>
+    <div class="row">
+      <input id="pathInput" type="text" placeholder="输入剧集文件夹路径，例如 D:\Videos\美剧" spellcheck="false" autocomplete="off">
+      <button id="pickBtn" class="ghost" type="button">浏览选择…</button>
+      <button id="scanBtn" class="primary" type="button">扫描</button>
+    </div>
+    <p class="hint">路径为本机真实路径。选中的文件夹下应包含剧集文件夹（一级结构），或“剧集文件夹 + 季文件夹”（二级结构，如 <code>S01</code>、<code>Season 1</code>、<code>第1季</code>）。</p>
+    <div id="step1Msg" class="msg hidden"></div>
+  </section>
+
+  <section class="card hidden" id="step2">
+    <h2><span class="step-num">2</span>预览与确认</h2>
+    <div id="summary"></div>
+    <div class="options">
+      <fieldset>
+        <legend>同名文件冲突处理</legend>
+        <label><input type="radio" name="conflict" value="skip" checked> 跳过（推荐）</label>
+        <label><input type="radio" name="conflict" value="autonum"> 自动编号（S01E01 (2).mkv）</label>
+        <label class="danger-opt"><input type="radio" name="conflict" value="overwrite"> 覆盖已有文件 ⚠️</label>
+      </fieldset>
+      <label class="check"><input type="checkbox" id="keepLang" checked> 保留字幕语言标记（如 <code>S01E01.chs.srt</code>）</label>
+      <label class="check"><input type="checkbox" id="autoNum"> 为无法识别集数的文件自动编号（按文件名排序，编号在已识别最大集数之后）</label>
+      <p class="hint edit-hint">提示：预览中的<b>新文件名可直接编辑</b>；重复、与现有文件冲突或非法字符会实时标出，执行时仍按所选冲突模式处理。</p>
+    </div>
+    <div id="preview" class="preview"></div>
+    <div class="selection-bar">
+      <span id="selectionInfo"></span>
+      <button id="selAllBtn" class="ghost small" type="button">全选</button>
+      <button id="selNoneBtn" class="ghost small" type="button">全不选</button>
+    </div>
+  </section>
+
+  <section class="card hidden" id="step3">
+    <h2><span class="step-num">3</span>执行重命名</h2>
+    <div class="row">
+      <button id="confirmBtn" class="primary big" type="button">确认重命名</button>
+      <button id="cancelBtn" class="ghost big" type="button">取消</button>
+      <button id="rescanBtn" class="ghost big" type="button">重新扫描</button>
+    </div>
+    <div id="progressWrap" class="progress hidden">
+      <div class="bar"><div id="progressBar"></div></div>
+      <div id="progressText"></div>
+    </div>
+    <div id="resultBox" class="result-box hidden"></div>
+  </section>
+
+  <section class="card">
+    <h2>📋 操作日志<button id="exportLogBtn" class="ghost small" type="button">导出日志</button></h2>
+    <div id="logList" class="log"></div>
+  </section>
+</main>
+<footer>工具仅在本机运行 · 执行前请仔细核对预览 · 重要文件建议先备份 · 日志文件位于工具目录 logs/rename.log</footer>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+const fmtEp = (n) => String(n ?? 0).padStart(2, '0');
+
+const state = { scan: null, include: new Map(), executing: false, abort: false };
+let rowRefs = [];
+
+async function api(url, body) {
+  let res;
+  try {
+    res = await fetch(url, body === undefined ? undefined : {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error('无法连接本地服务，请确认已运行 node server.mjs 后刷新页面');
+  }
+  let data = null;
+  try { data = await res.json(); } catch {}
+  if (!res.ok || !data || data.ok === false) {
+    throw new Error((data && data.error) || ('请求失败 (HTTP ' + res.status + ')'));
+  }
+  return data;
+}
+
+function showMsg(id, type, text) {
+  const m = $(id);
+  m.className = 'msg ' + type;
+  m.textContent = text;
+  m.classList.remove('hidden');
+}
+function clearMsg(id) { $(id).classList.add('hidden'); }
+
+function computeName(f, keepLang) {
+  const ep = f.episode !== null ? f.episode : f.autoNumber;
+  return 'S' + fmtEp(f.season) + 'E' + fmtEp(ep) + (keepLang && f.langTag ? '.' + f.langTag : '') + f.ext;
+}
+
+/* ---------------- 扫描 ---------------- */
+async function doScan() {
+  const raw = $('pathInput').value.trim().replace(/^["']|["']$/g, '');
+  if (!raw) { showMsg('step1Msg', 'error', '请输入文件夹路径'); return; }
+  $('scanBtn').disabled = true;
+  $('scanBtn').textContent = '扫描中…';
+  clearMsg('step1Msg');
+  try {
+    const data = await api('/api/scan', { path: raw });
+    state.scan = data;
+    $('pathInput').value = data.root;
+    $('step2').classList.remove('hidden');
+    $('step3').classList.remove('hidden');
+    renderSummary();
+    renderPreview();
+    refreshLog();
+    $('step2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    showMsg('step1Msg', 'error', '扫描失败：' + e.message);
+  } finally {
+    $('scanBtn').disabled = false;
+    $('scanBtn').textContent = '扫描';
+  }
+}
+
+async function doPick() {
+  $('pickBtn').disabled = true;
+  const old = $('pickBtn').textContent;
+  $('pickBtn').textContent = '选择中…';
+  clearMsg('step1Msg');
+  try {
+    const r = await api('/api/pick-folder', {});
+    if (r.path) {
+      $('pathInput').value = r.path;
+      showMsg('step1Msg', 'success', '已选择文件夹，点击“扫描”开始');
+    } else {
+      showMsg('step1Msg', 'error', r.error || '未选择文件夹');
+    }
+  } catch (e) {
+    showMsg('step1Msg', 'error', e.message);
+  } finally {
+    $('pickBtn').disabled = false;
+    $('pickBtn').textContent = old;
+  }
+}
+
+/* ---------------- 预览渲染 ---------------- */
+function renderSummary() {
+  const s = state.scan;
+  const st = s.stats;
+  const sum = $('summary');
+  sum.innerHTML = '';
+  const p1 = el('p', 'hint');
+  p1.append('扫描路径：', el('b', null, s.root));
+  const p2 = el('p', 'hint');
+  p2.textContent = '共 ' + st.shows + ' 个剧集文件夹 · ' + st.seasons + ' 个季文件夹 · ' + st.files + ' 个媒体文件 · '
+    + st.unrecognized + ' 个无法识别集数 · ' + st.conflicts + ' 个名称冲突';
+  sum.append(p1, p2);
+}
+
+function renderPreview() {
+  const wrap = $('preview');
+  wrap.innerHTML = '';
+  rowRefs = [];
+  const s = state.scan;
+  if (!s) return;
+  const keepLang = $('keepLang').checked;
+  const autoNum = $('autoNum').checked;
+  state.include = new Map();
+
+  for (const w of (s.warnings || [])) wrap.append(el('div', 'warn-line', '⚠️ ' + w));
+
+  for (const show of s.shows) {
+    const sg = el('div', 'show-group');
+    const head = el('div', 'show-head');
+    const icon = show.level === 2 ? '📁' : show.level === 1 ? '🎬' : '❓';
+    head.append(el('span', 'show-name', icon + ' ' + show.name));
+    const lb = show.level === 1 ? '一级结构 · 按第一季处理' : show.level === 2 ? '二级结构 · 季文件夹' : '未识别结构';
+    head.append(el('span', 'badge ' + (show.level === 2 ? 'b-purple' : show.level === 1 ? 'b-blue' : 'b-red'), lb));
+    sg.append(head);
+    for (const w of (show.warnings || [])) sg.append(el('div', 'warn-line small', '⚠️ ' + w));
+    for (const season of show.seasons) sg.append(buildSeasonGroup(season, keepLang, autoNum));
+    wrap.append(sg);
+  }
+  if (!s.shows.length) {
+    wrap.append(el('div', 'warn-line', '⚠️ 未发现任何剧集文件夹。请确认所选路径下直接包含剧集文件夹（一级结构）或“剧集文件夹 + 季文件夹”（二级结构）。'));
+  }
+  updateSelectionInfo();
+}
+
+function buildSeasonGroup(season, keepLang, autoNum) {
+  const g = el('div', 'season-group');
+  const head = el('div', 'season-head');
+  const label = season.folderName
+    ? 'S' + fmtEp(season.season) + ' · ' + season.folderName
+    : 'S' + fmtEp(season.season) + ' · 剧集文件夹内（第一季）';
+  head.append(el('span', 'season-title', label));
+  head.append(el('span', 'count', season.files.length + ' 个文件'));
+  const allCb = el('input');
+  allCb.type = 'checkbox';
+  allCb.dataset.all = '1';
+  allCb.checked = true;
+  const allLabel = el('label', 'sel-all');
+  allLabel.append(allCb, document.createTextNode('全选'));
+  head.append(allLabel);
+  g.append(head);
+  for (const w of (season.warnings || [])) g.append(el('div', 'warn-line small', '⚠️ ' + w));
+
+  const filesWrap = el('div', 'season-files');
+  const rows = [];
+  for (const f of season.files) {
+    const r = buildFileRow(f, computeName(f, keepLang), autoNum);
+    rows.push(r);
+    rowRefs.push(r);
+    filesWrap.append(r.row);
+  }
+  allCb.checked = rows.every((r) => r.cb.checked);
+  for (const r of rows) {
+    r.input.addEventListener('input', () => refreshGroupChecks(rows));
+    r.cb.addEventListener('change', () => { allCb.checked = rows.every((x) => x.cb.checked); });
+  }
+  refreshGroupChecks(rows);
+  allCb.onchange = () => {
+    for (const r of rows) {
+      r.cb.checked = allCb.checked;
+      state.include.set(r.key, allCb.checked);
+    }
+    updateSelectionInfo();
+  };
+  g.append(filesWrap);
+  return g;
+}
+
+function isValidTarget(val) {
+  const s = String(val).trim();
+  if (!s || s.length > 255) return false;
+  if (/[\\/:*?"<>|\u0000-\u001f]/.test(s)) return false;
+  if (s === '.' || s === '..' || s.endsWith('.')) return false;
+  const stem = s.includes('.') ? s.slice(0, s.lastIndexOf('.')) : s;
+  return !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(stem);
+}
+
+/* 基于当前编辑值，实时重算同一季内所有行的重复/冲突徽标 */
+function refreshGroupChecks(rows) {
+  const targetCount = new Map();
+  const originals = new Map();
+  for (const r of rows) {
+    originals.set(r.f.name.toLowerCase(), r);
+    const t = r.input.value.trim().toLowerCase();
+    if (isValidTarget(t) && t !== r.f.name.toLowerCase()) {
+      targetCount.set(t, (targetCount.get(t) || 0) + 1);
+    }
+  }
+  for (const r of rows) {
+    const dyn = r.dyn;
+    dyn.innerHTML = '';
+    const val = r.input.value.trim();
+    const lower = val.toLowerCase();
+    const computed = r.input.dataset.computed;
+    r.input.classList.toggle('edited', val !== computed);
+    if (!isValidTarget(val)) {
+      dyn.append(el('span', 'badge b-red', val === '' ? '目标名称为空' : '非法字符/保留名'));
+      continue;
+    }
+    if (lower === r.f.name.toLowerCase()) {
+      dyn.append(el('span', 'badge b-gray', val === r.f.name ? '已是目标名称' : '仅大小写调整'));
+    } else {
+      if ((targetCount.get(lower) || 0) > 1) dyn.append(el('span', 'badge b-orange', '目标名称重复'));
+      const other = originals.get(lower);
+      if (other && other !== r) {
+        const otherStays = other.input.value.trim().toLowerCase() === other.f.name.toLowerCase();
+        dyn.append(el('span', 'badge b-orange', otherStays ? '目标名称已存在' : '与另一文件当前名称冲突'));
+      }
+      if (val !== computed) dyn.append(el('span', 'badge b-blue', '已修改'));
+    }
+  }
+}
+
+function buildFileRow(f, newName, autoNum) {
+  const key = f.folder + '\u0000' + f.name;
+  const row = el('div', 'file-row');
+  const cb = el('input');
+  cb.type = 'checkbox';
+  let checked = f.episode !== null;
+  if (f.status === 'noop') checked = false;
+  if (f.episode === null && !autoNum) checked = false;
+  cb.checked = checked;
+  state.include.set(key, checked);
+  cb.onchange = () => {
+    state.include.set(key, cb.checked);
+    updateSelectionInfo();
+  };
+  const c1 = el('label', 'cell-check');
+  c1.append(cb);
+  const orig = el('div', 'cell-name');
+  orig.append(el('span', 'kind-icon', f.kind === 'video' ? '🎬' : '💬'), el('span', 'fname', f.name));
+  orig.title = f.name;
+  const arrow = el('div', 'cell-arrow', '→');
+  const nn = el('div', 'cell-name new');
+  const input = el('input', 'target-input');
+  input.type = 'text';
+  input.value = newName;
+  input.dataset.computed = newName;
+  input.spellcheck = false;
+  input.autocomplete = 'off';
+  input.title = '目标名称，可直接编辑；重复、冲突或非法字符会实时标出';
+  nn.append(input);
+  const st = el('div', 'cell-status');
+  if (f.episode !== null) {
+    st.append(el('span', 'badge b-blue', 'EP' + fmtEp(f.episode)));
+  } else {
+    st.append(el('span', 'badge b-red', '无法识别集数'));
+    if (autoNum && f.autoNumber !== null) st.append(el('span', 'badge b-blue', '自动编号 EP' + fmtEp(f.autoNumber)));
+  }
+  const dyn = el('span', 'dyn-badges');
+  st.append(dyn);
+  row.append(c1, orig, arrow, nn, st);
+  return { row, cb, key, input, f, dyn };
+}
+
+function updateSelectionInfo() {
+  let sel = 0;
+  let total = 0;
+  state.include.forEach((v) => { total += 1; if (v) sel += 1; });
+  $('selectionInfo').textContent = '已勾选 ' + sel + ' / ' + total + ' 个文件';
+}
+
+function setAll(checked) {
+  for (const r of rowRefs) {
+    r.cb.checked = checked;
+    state.include.set(r.key, checked);
+  }
+  document.querySelectorAll('.season-group input[data-all="1"]').forEach((c) => { c.checked = checked; });
+  updateSelectionInfo();
+}
+
+/* ---------------- 执行 ---------------- */
+async function doRename() {
+  if (state.executing || !state.scan) return;
+  const entries = [];
+  const localFailures = [];
+  for (const r of rowRefs) {
+    if (!state.include.get(r.key)) continue;
+    const val = r.input.value.trim();
+    if (!isValidTarget(val)) {
+      localFailures.push({ name: r.f.name, newName: val || '(空)', status: 'failed', reason: '目标名称无效（为空、含非法字符或为系统保留名）' });
+      continue;
+    }
+    entries.push({ folder: r.f.folder, name: r.f.name, newName: val });
+  }
+  if (!entries.length) {
+    if (localFailures.length) renderResults(localFailures, false, null);
+    else alert('请至少勾选一个需要重命名的文件');
+    return;
+  }
+  if (entries.length > 500) { alert('单次最多重命名 500 个文件，请分批勾选'); return; }
+  const conflictMode = document.querySelector('input[name="conflict"]:checked').value;
+  if (conflictMode === 'overwrite' && !window.confirm('⚠️ 覆盖模式：目标文件已存在时将被删除并替换，可能造成数据丢失！\n\n确定要以“覆盖”模式继续吗？')) return;
+
+  state.executing = true;
+  state.abort = false;
+  setExecutingUI(true);
+  const results = [];
+  let done = 0;
+  let aborted = false;
+  let errorMsg = null;
+  const CHUNK = 20;
+  try {
+    for (let i = 0; i < entries.length; i += CHUNK) {
+      if (state.abort) { aborted = true; break; }
+      const chunk = entries.slice(i, i + CHUNK);
+      const r = await api('/api/rename', {
+        root: state.scan.root,
+        entries: chunk,
+        conflictMode,
+        keepLang: $('keepLang').checked,
+      });
+      results.push(...(r.results || []));
+      done += chunk.length;
+      updateProgress(done, entries.length, chunk[chunk.length - 1].name);
+    }
+  } catch (e) {
+    errorMsg = e.message;
+  } finally {
+    state.executing = false;
+    setExecutingUI(false);
+  }
+  renderResults([...localFailures, ...results], aborted, errorMsg);
+  refreshLog();
+  if (results.some((r) => r.status === 'renamed')) await rescan();
+}
+
+function updateProgress(done, total, currentName) {
+  const pct = total ? Math.round(done / total * 100) : 100;
+  $('progressBar').style.width = pct + '%';
+  $('progressText').textContent = '正在重命名 ' + done + ' / ' + total + '（最近处理：' + currentName + '）';
+}
+
+function setExecutingUI(on) {
+  $('confirmBtn').disabled = on;
+  $('scanBtn').disabled = on;
+  $('pathInput').disabled = on;
+  $('pickBtn').disabled = on;
+  $('rescanBtn').disabled = on;
+  const cancel = $('cancelBtn');
+  cancel.disabled = false;
+  cancel.textContent = on ? '中止' : '取消';
+  $('progressWrap').classList.toggle('hidden', !on);
+  if (on) {
+    $('resultBox').classList.add('hidden');
+    $('progressBar').style.width = '0%';
+  }
+}
+
+function renderResults(results, aborted, errorMsg) {
+  const box = $('resultBox');
+  box.innerHTML = '';
+  box.classList.remove('hidden', 'ok', 'warn');
+  if (!results.length && !errorMsg) return;
+  const ok = results.filter((r) => r.status === 'renamed').length;
+  const sk = results.filter((r) => r.status === 'skipped').length;
+  const fa = results.filter((r) => r.status === 'failed').length;
+  box.classList.add(fa || errorMsg ? 'warn' : 'ok');
+  let titleText = '✅ 重命名完成';
+  if (aborted) titleText = '⏹ 操作已中止（已处理部分文件）';
+  if (errorMsg) titleText = '❌ 操作出错：' + errorMsg;
+  box.append(el('div', 'result-title', titleText));
+  const line = el('div', 'result-line');
+  line.append(
+    el('span', 'r-ok', '成功 ' + ok + ' 个'),
+    el('span', 'r-skip', '跳过 ' + sk + ' 个'),
+    el('span', 'r-fail', '失败 ' + fa + ' 个'),
+  );
+  box.append(line);
+  if (fa) {
+    box.append(el('div', 'hint', '失败明细：'));
+    const list = el('ul', 'fail-list');
+    for (const r of results) {
+      if (r.status === 'failed') list.append(el('li', null, r.name + ' → ' + r.newName + '：' + (r.reason || '未知原因')));
+    }
+    box.append(list);
+  }
+  if (sk) {
+    const det = el('details');
+    det.append(el('summary', null, '查看跳过明细（' + sk + ' 条）'));
+    const list = el('ul', 'fail-list');
+    for (const r of results) {
+      if (r.status === 'skipped') list.append(el('li', null, r.name + '：' + (r.reason || '跳过')));
+    }
+    det.append(list);
+    box.append(det);
+  }
+  if (aborted) box.append(el('div', 'hint', '已重命名的文件不会回滚；可重新扫描后继续处理剩余文件。'));
+}
+
+async function rescan() {
+  if (!state.scan) return;
+  try {
+    const data = await api('/api/scan', { path: state.scan.root });
+    state.scan = data;
+    renderSummary();
+    renderPreview();
+  } catch { /* 重新扫描失败不影响结果展示 */ }
+}
+
+function resetAll() {
+  state.scan = null;
+  state.include = new Map();
+  rowRefs = [];
+  $('step2').classList.add('hidden');
+  $('step3').classList.add('hidden');
+  $('preview').innerHTML = '';
+  $('summary').innerHTML = '';
+  $('resultBox').classList.add('hidden');
+  $('resultBox').innerHTML = '';
+  $('progressWrap').classList.add('hidden');
+  $('progressBar').style.width = '0%';
+  clearMsg('step1Msg');
+}
+
+/* ---------------- 日志 ---------------- */
+async function refreshLog() {
+  try {
+    const data = await api('/api/log');
+    const list = $('logList');
+    list.innerHTML = '';
+    for (const l of data.logs) {
+      const row = el('div', 'log-row');
+      row.append(el('span', 'log-ts', l.ts.slice(11, 19)));
+      row.append(el('span', 'log-level ' + l.level, l.level.toUpperCase()));
+      row.append(el('span', 'log-msg', l.msg));
+      if (l.detail) row.append(el('span', 'log-detail', JSON.stringify(l.detail)));
+      list.append(row);
+    }
+    if (!data.logs.length) list.append(el('div', 'hint', '暂无日志'));
+  } catch { /* 日志加载失败不影响主流程 */ }
+}
+
+async function exportLog() {
+  try {
+    const res = await fetch('/api/export-log');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'rename-log-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.txt';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    alert('导出日志失败：' + e.message);
+  }
+}
+
+/* ---------------- 事件绑定 ---------------- */
+$('scanBtn').addEventListener('click', doScan);
+$('pickBtn').addEventListener('click', doPick);
+$('confirmBtn').addEventListener('click', doRename);
+$('rescanBtn').addEventListener('click', rescan);
+$('cancelBtn').addEventListener('click', () => {
+  if (state.executing) {
+    state.abort = true;
+    $('cancelBtn').disabled = true;
+    $('cancelBtn').textContent = '正在中止…';
+  } else {
+    resetAll();
+  }
+});
+$('pathInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') doScan(); });
+$('keepLang').addEventListener('change', () => { if (state.scan) renderPreview(); });
+$('autoNum').addEventListener('change', () => { if (state.scan) renderPreview(); });
+$('selAllBtn').addEventListener('click', () => setAll(true));
+$('selNoneBtn').addEventListener('click', () => setAll(false));
+$('exportLogBtn').addEventListener('click', exportLog);
+
+/* ---------------- 初始化 ---------------- */
+if (location.protocol === 'file:') {
+  showMsg('step1Msg', 'error', '请勿直接双击打开本页面。请在工具目录运行 node server.mjs（或双击 start.bat），然后访问 http://127.0.0.1:3710');
+  ['scanBtn', 'pickBtn', 'confirmBtn', 'cancelBtn', 'rescanBtn', 'exportLogBtn'].forEach((id) => { $(id).disabled = true; });
+}
+refreshLog();
+</script>
+</body>
+</html>

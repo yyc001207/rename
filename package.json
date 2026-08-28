@@ -1,0 +1,17 @@
+{
+  "name": "episode-renamer",
+  "version": "1.0.0",
+  "description": "剧集文件批量重命名工具：将视频/字幕统一为 S01E01 命名规范（本地 Web 界面 + Node.js 服务，零依赖）",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.mjs",
+    "start:no-open": "node server.mjs --no-open",
+    "demo": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-demo.ps1",
+    "test": "node test/episode.test.mjs && node test/http-test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
