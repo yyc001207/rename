@@ -15,7 +15,7 @@ async function exists(p) { try { await fs.access(p); return true; } catch { retu
 // ---- 自建测试夹具 ----
 await fs.rm(ROOT, { recursive: true, force: true });
 const fixture = {
-  '老友记': ['EP01.mp4', 'EP02.mp4', 'EP03.mp4', '第04集.mkv', '[05].mkv', '06.mp4', 'Friends.S01E07.chs.srt', 'Friends.S01E07.cht.srt', 'E05.5.mkv', '片头花絮.mp4'],
+  '老友记': ['EP01.mp4', 'EP02.mp4', 'EP03.mp4', '第04集.mkv', '[05].mkv', '06.mp4', 'Friends.S01E07.chs.srt', 'Friends.S01E07.cht.srt', 'E05.5.mkv', '4K_EA.mp4', '片头花絮.mp4'],
   '权力的游戏/Season 1': ['S01E01.mp4', 'E02.mp4', 'EP03.ass', '04.srt', 'S01E05.chs&eng.srt', 'S01E05.mp4'],
   '权力的游戏/Season 2': ['01.mp4', '第02集.mkv', 'E03.mp4', '04.ass', '第05话.mp4'],
   '权力的游戏/Season 3': ['S03E01.mp4', 'ep2.mkv'],
@@ -24,6 +24,7 @@ const fixture = {
   '冲突测试/S1': ['E05.mp4', 'S01E05.mp4', 's01e09.mp4'],
   '自定义/S1': ['A.mp4', 'B.mp4'],
   '拆分测试': ['EP01.mp4', 'EP02.mp4', 'EP03.mp4', 'EP04.mp4', 'EP05.mp4'],
+  '三位数': ['001.mp4', '101.mp4', '120.mp4', 'Movie.2019.mp4'],
 };
 for (const [dir, files] of Object.entries(fixture)) {
   await fs.mkdir(path.join(ROOT, dir), { recursive: true });
@@ -60,27 +61,37 @@ const scan = async (p) => (await post('/api/scan', { path: p })).data;
 // 2. 扫描
 let s = await scan(ROOT);
 check('扫描成功', s && s.ok === true);
-check('识别 6 个剧集文件夹', s.shows.length === 6, JSON.stringify(s.shows.map((x) => x.name)));
+check('识别 7 个剧集文件夹', s.shows.length === 7, JSON.stringify(s.shows.map((x) => x.name)));
 const showNames = s.shows.map((x) => x.name);
-check('包含六个剧集名', ['老友记', '权力的游戏', '瑞克和莫蒂', '冲突测试', '自定义', '拆分测试'].every((n) => showNames.includes(n)));
+check('包含七个剧集名', ['老友记', '权力的游戏', '瑞克和莫蒂', '冲突测试', '自定义', '拆分测试', '三位数'].every((n) => showNames.includes(n)));
 
 // 3. 一级结构：老友记
 const lyj = s.shows.find((x) => x.name === '老友记');
 check('老友记为一级结构', lyj.level === 1);
 check('老友记按第一季处理', lyj.seasons[0].season === 1);
 const lyjFiles = lyj.seasons[0].files;
-check('老友记 10 个媒体文件', lyjFiles.length === 10);
+check('老友记 11 个媒体文件', lyjFiles.length === 11);
 check('EP01.mp4 → S01E01.mp4', lyjFiles.find((f) => f.name === 'EP01.mp4').newName === 'S01E01.mp4');
 check('字幕保留语言标记 chs', lyjFiles.find((f) => f.name === 'Friends.S01E07.chs.srt').newName === 'S01E07.chs.srt');
 const huaxu = lyjFiles.find((f) => f.name === '片头花絮.mp4');
-check('无集数文件自动编号为 8', huaxu.episode === null && huaxu.autoNumber === 8);
+check('无集数文件自动编号为 9（4K_EA 占 8）', huaxu.episode === null && huaxu.autoNumber === 9);
+const fourk = lyjFiles.find((f) => f.name === '4K_EA.mp4');
+check('4K_EA 画质标记不误判为第 4 集（按自动编号 8）', fourk && fourk.episode === null && fourk.autoNumber === 8);
 const half = lyjFiles.find((f) => f.name === 'E05.5.mkv');
 check('检测 .5 特殊集数（episode=5, half=true）', half && half.half === true && half.episode === 5);
 check('统计特殊集数', s.stats.halfEpisodes === 1);
 const chs2 = lyjFiles.find((f) => f.name === 'Friends.S01E07.chs.srt');
 const cht2 = lyjFiles.find((f) => f.name === 'Friends.S01E07.cht.srt');
 check('从头编号：视频/字幕配对同号', chs2.renumber === cht2.renumber);
-check('从头编号：10 个文件 9 个编号连续', Math.max(...lyjFiles.map((f) => f.renumber)) === 9 && Math.min(...lyjFiles.map((f) => f.renumber)) === 1);
+check('从头编号：11 个文件 10 个编号连续', Math.max(...lyjFiles.map((f) => f.renumber)) === 10 && Math.min(...lyjFiles.map((f) => f.renumber)) === 1);
+
+// 3.5 三位数集数（100 集以上）
+const tds = s.shows.find((x) => x.name === '三位数').seasons[0].files;
+check('三位数集数识别（001/101/120）',
+  tds.find((f) => f.name === '001.mp4').episode === 1
+  && tds.find((f) => f.name === '101.mp4').episode === 101
+  && tds.find((f) => f.name === '120.mp4').episode === 120);
+check('四位年份不误判', tds.find((f) => f.name === 'Movie.2019.mp4').episode === null);
 
 // 4. 二级结构：权力的游戏
 const got = s.shows.find((x) => x.name === '权力的游戏');

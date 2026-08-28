@@ -31,6 +31,28 @@ eq('画质不误判', extractEpisode('1080p.x264'), null);
 eq('720p 不误判', extractEpisode('Naruto.720p'), null);
 eq('第1季不是集数', extractEpisode('老友记.第一季'), null);
 
+// ---- 三位数集数（100 集以上）----
+eq('三位数 101', extractEpisode('101'), 101);
+eq('三位数 120', extractEpisode('120'), 120);
+eq('三位数带前导零 001', extractEpisode('001'), 1);
+eq('S01E101', extractEpisode('S01E101'), 101);
+eq('第120集', extractEpisode('第120集'), 120);
+eq('四位年份不误判', extractEpisode('Movie.2019'), null);
+eq('四位分辨率不误判', extractEpisode('Show.1080'), null);
+
+// ---- 画质/编码/音轨标记不误判为集数 ----
+eq('4K_EA 不误判', extractEpisode('4K_EA'), null);
+eq('Movie.4K_EA 不误判', extractEpisode('Movie.4K_EA'), null);
+eq('4K 不误判', extractEpisode('Show.4K'), null);
+eq('HDR10 不误判', extractEpisode('HDR10'), null);
+eq('DDP5.1 不误判', extractEpisode('DDP5.1'), null);
+eq('独立 5.1 声道不误判', extractEpisode('Show.5.1'), null);
+eq('10bit 不误判', extractEpisode('Show.10bit'), null);
+eq('3D 不误判', extractEpisode('3D'), null);
+eq('x265 不误判', extractEpisode('Show.x265'), null);
+eq('剔除标记后仍能识别', extractEpisode('EP01.4K_EA'), 1);
+eq('数字贴近文字仍识别', extractEpisode('Friends01'), 1);
+
 // ---- 季数识别 ----
 eq('S01', extractSeason('S01'), 1);
 eq('s2', extractSeason('s2'), 2);

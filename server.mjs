@@ -47,8 +47,20 @@ const naturalCompare = (a, b) => a.localeCompare(b, undefined, { numeric: true, 
 const pad2 = (n) => String(n).padStart(2, '0');
 
 /* ---------------- 集数 / 季数识别 ---------------- */
+/* 常见画质/编码/音轨标记：提取集数前从文件名中剔除，避免被误判为集数（如 4K_EA→4、HDR10→10、DDP5.1→5）
+   注意：使用字母数字边界而非 \b——下划线会把 "4K_EA" 连成一个单词导致 \b4k\b 无法匹配 */
+const QUALITY_TOKEN_RE = new RegExp([
+  '(?<![a-z0-9])(?:4k|2k|8k|2160p|1080p|720p|480p|576p|uhd|fhd|hd|sd|sdr|3d|hdr10\\+?|hdr|dolby\\s*vision|dv)(?![a-z0-9])',
+  '(?<![a-z0-9])(?:hevc|avc|x26[45]|h26[45]|10bit|8bit|hi10p)(?![a-z0-9])',
+  '(?<![a-z0-9])(?:web-?dl|webrip|blu-?ray|remux|hdtv|hdrip|bdrip|dvdrip)(?![a-z0-9])',
+  '(?<![a-z0-9])(?:ddp?|eac3|ac3|aac|dts(?:-hd|-x)?|truehd|atmos|flac|opus|pcm)\\s*\\d*(?:\\.\\d+)?(?:ch|声道)?(?![a-z0-9])',
+  '(?<![a-z0-9])ea(?![a-z0-9])',
+  '(?<![\\w])(?:2\\.0|2\\.1|4\\.1|5\\.1|6\\.1|7\\.1)(?![\\w])',
+].join('|'), 'gi');
+
 function extractEpisode(fileNameNoExt) {
-  const s = String(fileNameNoExt || '').trim();
+  // 先剔除画质/编码/音轨标记，避免其中的数字被误判为集数
+  const s = String(fileNameNoExt || '').trim().replace(QUALITY_TOKEN_RE, ' ').trim();
   if (!s) return null;
   const patterns = [
     /s\s*\d{1,2}\s*e\s*p?\s*(\d{1,3})/i, // S01E01 / S1EP01 / s01e01
@@ -66,8 +78,9 @@ function extractEpisode(fileNameNoExt) {
       if (n >= 0 && n <= 999) return n;
     }
   }
-  // 兜底：独立的 1~2 位数字（避免把 1080p / 720p / 年份当成集数）
-  const m = s.match(/(?:^|[^\d])(\d{1,2})(?:[^\d]|$)/);
+  // 兜底：独立的 1~3 位数字（支持 100 集以上，如 101 / 120 / 001）。
+  // 4 位及以上数字（年份 2019、分辨率 1080/2160 等）不会被匹配；1080p/720p 等带标记的已在上方剔除
+  const m = s.match(/(?:^|[^\d])(\d{1,3})(?:[^\d]|$)/);
   if (m) return parseInt(m[1], 10);
   return null;
 }
