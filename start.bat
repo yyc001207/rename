@@ -1,11 +1,35 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
+
 where node >nul 2>nul
-if errorlevel 1 (
-  echo [é”™è¯¯] æœªæ£€æµ‹åˆ° Node.jsï¼Œè¯·å…ˆåˆ° https://nodejs.org å®‰è£… Node.js 18 æˆ–æ›´é«˜ç‰ˆæœ¬ã€‚
-  pause
-  exit /b 1
-)
+if errorlevel 1 goto :NONODE
+if not exist "server.mjs" goto :NOFILE
+
+echo ÕıÔÚÆô¶¯¾ç¼¯ÎÄ¼şÅúÁ¿ÖØÃüÃû¹¤¾ß£¬ä¯ÀÀÆ÷½«×Ô¶¯´ò¿ª http://127.0.0.1:3710
+echo Èôä¯ÀÀÆ÷Î´×Ô¶¯´ò¿ª£¬ÇëÊÖ¶¯·ÃÎÊ¸ÃµØÖ·£»Í£Ö¹·şÎñÇë°´ Ctrl+C¡£
+echo.
 node server.mjs
+if errorlevel 1 (
+  echo.
+  echo [´íÎó] ·şÎñÆô¶¯Ê§°Ü£¬Çë²é¿´ÉÏ·½´íÎóĞÅÏ¢£¨³£¼ûÔ­Òò£º¶Ë¿Ú±»Õ¼ÓÃ£©¡£
+)
+echo.
 pause
+exit /b 0
+
+:NONODE
+echo.
+echo [´íÎó] Î´¼ì²âµ½ Node.js¡£
+echo ÇëÏÈµ½ https://nodejs.org ÏÂÔØ°²×° Node.js 18 »ò¸ü¸ß°æ±¾£¨Ñ¡Ôñ LTS °æ±¾£©£¬
+echo °²×°Íê³ÉºóÖØĞÂË«»÷±¾½Å±¾¡£
+echo.
+pause
+exit /b 1
+
+:NOFILE
+echo.
+echo [´íÎó] Î´ÕÒµ½ server.mjs ÎÄ¼ş¡£
+echo ÇëÈ·ÈÏ±¾½Å±¾Óë server.mjs¡¢public ÎÄ¼ş¼ĞÎ»ÓÚÍ¬Ò»Ä¿Â¼¡£
+echo.
+pause
+exit /b 1

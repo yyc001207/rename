@@ -297,6 +297,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-demo.ps1
 
 ## 十四、常见问题（FAQ）
 
+**Q：双击 start.bat 窗口一闪而过？**
+A：通常是未安装 Node.js，或脚本与 `server.mjs` 不在同一目录。请按 `Win + R` 输入 `cmd` 回车，执行 `node --version`：
+
+- 若提示「不是内部或外部命令」→ 请到 <https://nodejs.org> 安装 LTS 版本，安装完成后重新双击 `start.bat`；
+- 若正常显示版本号 → 在终端中 `cd` 到工具目录后手动执行 `node server.mjs`，查看具体报错（常见为端口被占用）。
+
 **Q：端口被占用怎么办？**
 A：换一个端口启动，例如 `node server.mjs 3720`。
 
